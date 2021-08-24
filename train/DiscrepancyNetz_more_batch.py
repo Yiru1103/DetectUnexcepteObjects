@@ -451,7 +451,7 @@ class DiscrepancyNet(nn.Module):
         if self.att:
             lxlConvList_plus = self.attention(CorrList,lxlConvList) 
         else:
-            lxlConvList_plus = CorrList
+            lxlConvList_plus = lxlConvList
         outputs = self.upsampling(CorrList,lxlConvList_plus)
         return outputs
 
@@ -470,6 +470,7 @@ class DiscrepancyNet(nn.Module):
 # print(sem_label[0,0,1:10])
 # print('\n')
 # print(output[0,0,0,3:20])
+
 
 
 

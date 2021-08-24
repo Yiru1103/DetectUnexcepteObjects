@@ -32,9 +32,10 @@ random.seed(0)
 
 
 
-#%% Configuation
-path = 'C:/Users/UT111EM/Desktop/Yiru/Signalverarbeitung/synbost-try-clean'
-config = {'experiment_name': 'Test_CleanCode', #Corrolation_muti_Features_test
+#%% 
+
+path = '/home/xieyiru/xieyiru/DetectUnexcepteObjects/train'
+config = {'experiment_name': 'Test', #Corrolation_muti_Features_test
          
           'save_folder': path + '/Result', 
           
@@ -71,12 +72,12 @@ config = {'experiment_name': 'Test_CleanCode', #Corrolation_muti_Features_test
                         'beta1': 0.5, 
                         'beta2': 0.999}, 
           
-          'dataloader': 'old', # 'yolo'
-          'attention': True,
+          'dataloader': 'yolo',#old', # 'yolo'
+          'attention': False,
           'train_dataloader': {'dataset_args': {'dataroot': path + '/Dataset/Cityscapes',
                                                 #'dataroot': '/home/xieyiru/xieyiru/Dataset/Dataset_Resize/CityScapes_Resize',# 
                                                 'preprocess_mode': 'none', 
-                                                'crop_size': 64, 
+                                                'crop_size': 512, 
                                                 'aspect_ratio': 2, 
                                                 'flip': True, 
                                                 'normalize': True, 
@@ -99,7 +100,7 @@ config = {'experiment_name': 'Test_CleanCode', #Corrolation_muti_Features_test
           'val_dataloader': {'dataset_args': {'dataroot': path + '/Dataset/Cityscapes',
                                               #'dataroot':  '/home/xieyiru/xieyiru/Dataset/Dataset_Resize/CityScapes_Resize',
                                               'preprocess_mode': 'none', 
-                                              'crop_size': 64, 
+                                              'crop_size': 512, 
                                               'aspect_ratio': 2, 
                                               'flip': False, 
                                               'normalize': True, 
@@ -113,10 +114,10 @@ config = {'experiment_name': 'Test_CleanCode', #Corrolation_muti_Features_test
                                                  'num_workers': 0, 
                                                  'shuffle': False}}, 
           
-          'test_dataloader1': {'dataset_args': {'dataroot': path + '/Dataset/Lost_and_Found',
-                                                #'dataroot': '/home/xieyiru/xieyiru/Dataset/Dataset_Resize/lost_and_found_Resize',
+          'test_dataloader1': {'dataset_args': {#'dataroot': path + '/Dataset/Lost_and_Found',
+                                                'dataroot': '/home/xieyiru/xieyiru/Dataset/Dataset_Resize/lost_and_found_Resize',
                                                 'preprocess_mode': 'none', 
-                                                'crop_size': 64, 
+                                                'crop_size': 512, 
                                                 'aspect_ratio': 2, 
                                                 'flip': False, 
                                                 'normalize': True, 
@@ -658,19 +659,19 @@ class DissimilarityTrainer(nn.Module):
         
 
         # get pre-trained model
-        pretrain_config = config['diss_pretrained']
-        self.save_ckpt_fdr = pretrain_config['save_folder']
+        
+        self.save_ckpt_fdr = config['diss_pretrained']['save_folder']
         self.ckpt_name = config['experiment_name']
         
-        if pretrain_config['load'] == 'initial':
+        if config['diss_pretrained']['load'] == 'initial':
 
-            #print('Loading pretrained weights')
-            #model_path = os.path.join(self.save_ckpt_fdr, 'Test_Original', 'best_net_Test_Original.pth')
-            #model_weights = torch.load(model_path)
-            #self.diss_model.load_state_dict(model_weights, strict=False)
+            print('Loading pretrained weights')
+            model_path = os.path.join(self.save_ckpt_fdr, 'baseline_cosine_vgg_pretrained_1008', 'baseline_cosine_vgg_pretrained_1008.pth')
+            model_weights = torch.load(model_path)
+            self.diss_model.load_state_dict(model_weights, strict=False)
             self.epoch = 1
 
-        elif pretrain_config['load'] == 'continue': 
+        elif config['diss_pretrained']['load'] == 'continue': 
             
             print('Loading pretrained weights')
             path = os.path.join(self.save_ckpt_fdr,self.ckpt_name,self.ckpt_name + '.pth')
@@ -897,8 +898,59 @@ def Validation(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
    
         return results  
    
+#%% Test
+def Test(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
+    
+    
+    
+        
+        
+    flat_pred = np.zeros(w * h * len(val_loader))#.to(device)
+    flat_labels = np.zeros(w * h * len(val_loader))#.to(device)
+    
+    with torch.no_grad():
+        results = {}    
+        val_loss = 0
+        t_val = tqdm(val_loader,position=0, leave=True)
+        for i, data_i in enumerate(t_val):
+           
+            original = data_i['original'].to(device)
+            semantic = data_i['semantic'].to(device)
+            synthesis = data_i['synthesis'].to(device)
+            label = data_i['label'].to(device)
+            loss, outputs = trainer.run_model_one_step(original, synthesis, semantic, label,'validation')
+            #loss, outputs = trainer.run_validation(original, synthesis, semantic, label)
+
+            val_loss += loss
+            
+        
+            t_val.set_description('Validation: Epoch %i  Loss: %.2f'% (epoch,loss))
+            t_val.refresh() # to show immediately the update
+            
+            outputs = softmax(outputs)
+            (softmax_pred, predictions) = torch.max(outputs, dim=1)
+            avg_val_loss = val_loss / len(val_loader)
+            #if epoch >10:
+                  
+            flat_pred[i * w * h:i * w * h + w * h] = torch.flatten(outputs[:, 1, :, :]).detach().cpu().numpy()
+            flat_labels[i * w * h:i * w * h + w * h] = torch.flatten(label).detach().cpu().numpy()
+                #print('hi')
+            
+
+       
+        
+        results = get_metrics(flat_labels, flat_pred)
+        #Sum_writer.add_scalar('Validation/AUC_ROC_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), results['auroc'], epoch)
+        #Sum_writer.add_scalar('Validation/mAP_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), results['AP'], epoch)
+        #Sum_writer.add_scalar('Validation/FPR@95TPR_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), results['FPR@95%TPR'], epoch)
+        avg_val_loss = val_loss / len(val_loader)  
+        results['avg_val_loss'] = avg_val_loss
+        #Sum_writer.add_scalar('Validation/Val_loss_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), avg_val_loss, epoch)
+   
+        return results      
+
 #%% main     
-train(trainer,train_loader,Sum_writer,val_loader,softmax,w,h,cfg_val_loader,save_fdr,exp_name)  
+#train(trainer,train_loader,Sum_writer,val_loader,softmax,w,h,cfg_val_loader,save_fdr,exp_name)  
 
 
 # first_epoch = trainer.get_epoch()
@@ -911,21 +963,15 @@ train(trainer,train_loader,Sum_writer,val_loader,softmax,w,h,cfg_val_loader,save
 
 
 
-####################################
-#Testing
-# epoch = 1
-# results = Validation(test_loader1,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader)
 
-# print('Test: Train/Training Loss: %f' % (results['avg_val_loss'])) 
-# print('Test: AU_ROC: %f' % results['auroc'])
-# print('Test: mAP: %f' % results['AP'])
-# print('Test: FPR@95TPR: %f' % results['FPR@95%TPR'])
+#%%Testing
+epoch = 1
+results = Test(test_loader1,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader)
 
-########################################
-
-
-
-
+print('Test: Train/Training Loss: %f' % (results['avg_val_loss'])) 
+print('Test: AU_ROC: %f' % results['auroc'])
+print('Test: mAP: %f' % results['AP'])
+print('Test: FPR@95TPR: %f' % results['FPR@95%TPR'])
 
 
 
