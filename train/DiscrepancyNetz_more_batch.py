@@ -441,7 +441,7 @@ class DiscrepancyNet(nn.Module):
         self.attention = Attention()
         self.att = att
         
-    def forward(self, image, gen_image, sem_label):
+    def forward_neu(self, image, gen_image, sem_label):
         
         image_feature = self.vgg_features(image)
         genImage_feature = self.vgg_features(gen_image)
@@ -454,7 +454,25 @@ class DiscrepancyNet(nn.Module):
             lxlConvList_plus = lxlConvList
         outputs = self.upsampling(CorrList,lxlConvList_plus)
         return outputs
+    
+    def forward(self, inputs):
+        
+        image = inputs[:,0:3,:,:]
+        gen_image = inputs[:,3:6,:,:]
+        sem_label = inputs[:,6:25,:,:]
+        
+        image_feature = self.vgg_features(image)
+        genImage_feature = self.vgg_features(gen_image)
+        semLabel_feature = self.sem_features(sem_label)
+        lxlConvList = self.lxl_conv(image_feature,genImage_feature,semLabel_feature)
 
+        CorrList = self.cat_mix_corr(image_feature,genImage_feature) 
+        if self.att:
+            lxlConvList_plus = self.attention(CorrList,lxlConvList) 
+        else:
+            lxlConvList_plus = lxlConvList
+        outputs = self.upsampling(CorrList,lxlConvList_plus)
+        return outputs
 
 # difference = DiscrepancyNet()
 # torch.manual_seed(0)
@@ -471,6 +489,25 @@ class DiscrepancyNet(nn.Module):
 # print('\n')
 # print(output[0,0,0,3:20])
 
+
+# difference = DiscrepancyNet(False)
+# path = '/home/xieyiru/xieyiru/synbost-try/weight/Test_Original'
+# Savepath = path + '/discrepancy.pth'
+
+# if not os.path.exists(Savepath):
+#     torch.save(difference.state_dict(),path + '/temp.pth')
+#     dict_self = torch.load(path + '/temp.pth')
+#     dict_pr = torch.load(path + '/Test_Original.pth')
+#     dict_pre = dict_pr#['weights']
+#     dict_diff = dict_self.copy()
+#     LayerName_gan = list(dict_diff.keys())
+#     for i, key in enumerate(dict_pre.keys()):
+#         assert torch.numel(dict_diff[LayerName_gan[i]]) == torch.numel(dict_pre[key])
+#         dict_diff[list(dict_diff.keys())[i]]=dict_pre[key]
+#     torch.save(dict_diff,Savepath)  
+
+# print('load the pretrained weight...')    
+# difference.load_state_dict(torch.load(Savepath)) 
 
 
 
