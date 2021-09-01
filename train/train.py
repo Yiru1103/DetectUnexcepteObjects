@@ -1,11 +1,8 @@
-import argparse
+
 import torch
-#import torch.distributed as dist
-#import yaml
 import os
 from tqdm import tqdm
 import numpy as np
-#import shutil
 from PIL import Image
 import time
 import torch.backends.cudnn as cudnn
@@ -18,7 +15,6 @@ from torch.utils.tensorboard import SummaryWriter
 #from util import trainer_util
 
 from contextlib import contextmanager
-from image_dissimilarity.data.cityscapes_dataset import CityscapesDataset
 from matplotlib import pyplot as plt
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -44,7 +40,7 @@ path = '/home/xieyiru/xieyiru/DetectUnexcepteObjects/train'
 #path = 'C:/Users/UT111EM/Desktop/Yiru/Signalverarbeitung/synbost-try'
 
 dataloader = 'yolo'
-config = {'experiment_name': 'test_0445', #Corrolation_muti_Features_test
+config = {'experiment_name': 'test_0109', #Corrolation_muti_Features_test
          
           'save_folder': path + '/Result', 
           
@@ -173,42 +169,15 @@ class CityscapesDataset(Dataset):
         
             self.original_paths += [os.path.join(dataroot,'original',folder, image)
                                    for image in os.listdir(os.path.join(dataroot,  'original',folder))]
-            if light_data:
-                self.semantic_paths += [os.path.join(dataroot, 'semantic_icnet',folder, image)
-                                       for image in os.listdir(os.path.join(dataroot, 'semantic_icnet',folder))]
-                self.synthesis_paths += [os.path.join(dataroot, 'synthesis_spade',folder, image)
-                                        for image in os.listdir(os.path.join(dataroot, 'synthesis_spade',folder))]
-            else:
-                self.semantic_paths += [os.path.join(dataroot, 'semantic',folder, image)
-                                       for image in os.listdir(os.path.join(dataroot, 'semantic',folder))]
-                self.synthesis_paths += [os.path.join(dataroot, 'synthesis',folder, image)
-                                        for image in os.listdir(os.path.join(dataroot, 'synthesis',folder))]
-            if roi:
-                self.label_paths += [os.path.join(dataroot, 'labels_with_ROI',folder, image)
-                                    for image in os.listdir(os.path.join(dataroot, 'labels_with_ROI',folder))]
-            elif void:
-                self.label_paths += [os.path.join(dataroot, 'labels_with_void_no_ego',folder, image)
-                                    for image in os.listdir(os.path.join(dataroot, 'labels_with_void_no_ego',folder))]
-            else:
-                self.label_paths += [os.path.join(dataroot, 'error_labels',folder, image)
-                                    for image in os.listdir(os.path.join(dataroot, 'error_labels',folder))]
-            if prior:
-                if light_data:
-                    self.mae_features_paths += [os.path.join(dataroot, 'mae_features_spade',folder, image)
-                                               for image in os.listdir(os.path.join(dataroot, 'mae_features_spade',folder))]
-                    self.entropy_paths += [os.path.join(dataroot, 'entropy_icnet',folder, image)
-                                          for image in os.listdir(os.path.join(dataroot, 'entropy_icnet',folder))]
-                    self.logit_distance_paths += [os.path.join(dataroot, 'logit_distance_icnet',folder, image)
-                                                 for image in os.listdir(os.path.join(dataroot, 'logit_distance_icnet',folder))]
-                else:
-                    self.mae_features_paths += [os.path.join(dataroot, 'mae_features',folder, image)
-                                               for image in os.listdir(os.path.join(dataroot, 'mae_features',folder))]
-                    self.entropy_paths += [os.path.join(dataroot, 'entropy',folder, image)
-                                          for image in os.listdir(os.path.join(dataroot, 'entropy',folder))]
-                    self.logit_distance_paths += [os.path.join(dataroot, 'logit_distance',folder, image)
-                                                 for image in os.listdir(os.path.join(dataroot, 'logit_distance',folder))]
-            
-            
+           
+            self.semantic_paths += [os.path.join(dataroot, 'semantic',folder, image)
+                                   for image in os.listdir(os.path.join(dataroot, 'semantic',folder))]
+            self.synthesis_paths += [os.path.join(dataroot, 'synthesis',folder, image)
+                                    for image in os.listdir(os.path.join(dataroot, 'synthesis',folder))]
+       
+            self.label_paths += [os.path.join(dataroot, 'error_labels',folder, image)
+                                 for image in os.listdir(os.path.join(dataroot, 'error_labels',folder))]
+
         
         
         # We need to sort the images to ensure all the pairs match with each other
@@ -216,22 +185,13 @@ class CityscapesDataset(Dataset):
         self.semantic_paths = natsorted(self.semantic_paths)
         self.synthesis_paths = natsorted(self.synthesis_paths)
         self.label_paths = natsorted(self.label_paths)
-        
-
-        
-        
-        
+           
         if prior:
             self.mae_features_paths = natsorted(self.mae_features_paths)
             self.entropy_paths = natsorted(self.entropy_paths)
             self.logit_distance_paths = natsorted(self.logit_distance_paths)
         
-        if only_valid: # Only for Lost and Found
-            self.original_paths = np.delete(self.original_paths, INVALID_LABELED_FRAMES)
-            self.semantic_paths = np.delete(self.semantic_paths, INVALID_LABELED_FRAMES)
-            self.synthesis_paths = np.delete(self.label_paths, INVALID_LABELED_FRAMES)
-            self.label_paths = np.delete(self.label_paths, INVALID_LABELED_FRAMES)
-               
+
         assert len(self.original_paths) == len(self.semantic_paths) == len(self.synthesis_paths) \
                == len(self.label_paths), \
             "Number of images in the dataset does not match with each other"
@@ -377,192 +337,13 @@ def one_hot_encoding(semantic, num_classes=20):
     return one_hot
 
 
-#%% Transform
-
-# from PIL import ImageFile
-# from torchvision import transforms
-# #from imgaug import augmenters as iaa
-# #from imgaug import parameters as iap
-
-# ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-# # defines all the different types of transformations
-# class OnlyApplyBlurs:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.25, iaa.OneOf([iaa.GaussianBlur(sigma=iap.Uniform(0, 3.0)),
-#                                                                   iaa.MotionBlur(
-#                                                                       k=iap.Choice([3, 7, 11, 15]), angle=0,
-#                                                                       direction=1)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyBlursMedium:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.25, iaa.OneOf([iaa.GaussianBlur(sigma=iap.Uniform(0, 4.5)),
-#                                                                   iaa.MotionBlur(
-#                                                                       k=iap.Choice([11, 15, 21]), angle=0,
-#                                                                       direction=1)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyBlursStrong:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.25, iaa.OneOf([iaa.GaussianBlur(sigma=iap.Uniform(0, 6.0)),
-#                                                                   iaa.MotionBlur(
-#                                                                       k=iap.Choice([15, 21, 27, 33]),
-#                                                                       angle=0,
-#                                                                       direction=1)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyBlursAggressive:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.50, iaa.OneOf([iaa.GaussianBlur(sigma=iap.Uniform(0, 8.0)),
-#                                                                   iaa.MotionBlur(
-#                                                                       k=iap.Normal(15, 50),
-#                                                                       angle=iap.Normal(0, 360),
-#                                                                       direction=iap.Normal(-1, 1))]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyChangeContrast:
-#     def __init__(self):
-#         self.aug = iaa.Sequential(
-#             [iaa.Sometimes(0.25, iaa.OneOf([iaa.contrast.LinearContrast(alpha=iap.Choice(np.arange(0, 3, 0.5).tolist())),
-#                                             iaa.SigmoidContrast(gain=iap.Choice(np.arange(0, 3, 1).tolist()),
-#                                                                 cutoff=iap.Choice(np.arange(0, 0.6, 0.10).tolist()))])),
-#              ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyDropout:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.25, iaa.OneOf([iaa.Dropout(p=(0, 0.2)),
-#                                                                   iaa.CoarseDropout(0.1, size_percent=0.25)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyDropoutMedium:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.25, iaa.OneOf([iaa.Dropout(p=(0, 0.35)),
-#                                                                   iaa.CoarseDropout(0.15, size_percent=0.25)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyDropoutStrong:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.40, iaa.OneOf([iaa.Dropout(p=(0, 0.5)),
-#                                                                   iaa.CoarseDropout(0.25, size_percent=0.25)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyDropoutAggressive:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Sometimes(0.50, iaa.OneOf([iaa.Dropout(p=(0, 0.75)),
-#                                                                   iaa.CoarseDropout(0.5, size_percent=0.5)]))
-#                                    ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyNoiseLight:
-#     def __init__(self):
-#         self.aug = iaa.Sequential(
-#             [iaa.Sometimes(0.25, iaa.OneOf([iaa.AdditiveGaussianNoise((0, 0.1), (0, 0.1), per_channel=True),
-#                                             iaa.AdditivePoissonNoise((0, 0.1), per_channel=True)]))
-#              ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyNoiseMedium:
-#     def __init__(self):
-#         self.aug = iaa.Sequential(
-#             [iaa.Sometimes(0.25, iaa.OneOf([iaa.AdditiveGaussianNoise((0, 0.2), (0, 0.1), per_channel=True),
-#                                             iaa.AdditivePoissonNoise((0, 0.2), per_channel=True)]))
-#              ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyNoiseStrong:
-#     def __init__(self):
-#         self.aug = iaa.Sequential(
-#             [iaa.Sometimes(0.25, iaa.OneOf([iaa.AdditiveGaussianNoise((0, 0.2), (0, 0.2), per_channel=True),
-#                                             iaa.AdditivePoissonNoise((0, 0.2), per_channel=True)]))
-#              ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyNoiseAggressive:
-#     def __init__(self):
-#         self.aug = iaa.Sequential(
-#             [iaa.Sometimes(0.25, iaa.OneOf([iaa.AdditiveGaussianNoise((0, 100),
-#                                                                       (0, 100),
-#                                                                       per_channel=True),
-#                                             iaa.AdditivePoissonNoise((0, 100),
-#                                                                      per_channel=True)]))
-#              ])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
-# class OnlyApplyBrightnessAggressive:
-#     def __init__(self):
-#         self.aug = iaa.Sequential([iaa.Add(iap.Normal(-200, 200), per_channel=False)])
-
-#     def __call__(self, img):
-#         img = np.array(img)
-#         return self.aug.augment_image(img)
-
-
 def __flip(img, flip):
     if flip:
         return img.transpose(Image.FLIP_LEFT_RIGHT)
     return img
 
+
+#%% Transform
 def get_transform(image_size, transform_name='blurs'):
     # uses ImageNet mean and standard deviation to normalize images
     norm_mean = [0.485, 0.456, 0.406]
@@ -825,7 +606,7 @@ dataset = cfg_val_loader['dataset_args']
 h = int((dataset['crop_size']/dataset['aspect_ratio']))
 w = int(dataset['crop_size'])
 
-
+model = DiscrepancyNet(False).to(device)
 #%% Model aufbauen
 
 class DissimilarityTrainer(nn.Module):
@@ -892,7 +673,7 @@ class DissimilarityTrainer(nn.Module):
         if pretrain_config['load'] == 'initial':
             
             
-            # path = '/home/xieyiru/xieyiru/synbost-try/weight/Test_Original'
+            # path = '/home/xieyiru/xieyiru/DetectUnexcepteObjects/train/weight/Test_Original'
             # Savepath = path + '/Test_Original.pth'
             
             # if not os.path.exists(Savepath):
@@ -905,15 +686,14 @@ class DissimilarityTrainer(nn.Module):
             #     for i, key in enumerate(dict_pre.keys()):
             #         assert torch.numel(dict_diff[LayerName_gan[i]]) == torch.numel(dict_pre[key])
             #         dict_diff[list(dict_diff.keys())[i]]=dict_pre[key]
-            #     torch.save(dict_diff,Savepath)  
+                    
+            #     Save_Info = {'model': dict_diff}
+            #     torch.save(Save_Info,Savepath)  
             
-            #print('load the pretrained weight...')    
-            #self.diss_model.load_state_dict(torch.load(Savepath)) 
-                        
-     
+    
             print('Loading pretrained weights')
-            model_path = os.path.join(self.save_ckpt_fdr, 'baseline_cosine_vgg_pretrained_1008', 'baseline_cosine_vgg_pretrained_1008.pth')
-            #model_path = os.path.join(self.save_ckpt_fdr, 'Test_Original', 'Test_Original.pth')            
+            #model_path = os.path.join(self.save_ckpt_fdr, 'baseline_cosine_vgg_pretrained_1008', 'baseline_cosine_vgg_pretrained_1008.pth')
+            model_path = os.path.join(self.save_ckpt_fdr, 'Test_Original', 'Test_Original.pth')            
             model_weights = torch.load(model_path)
             #self.diss_model.load_state_dict(model_weights)
             self.diss_model.load_state_dict(model_weights['model'])
@@ -1126,12 +906,11 @@ def get_metrics(flat_labels, flat_pred, num_points=50):
 
     return results
 
-#%% train
+#%% Train
 def train(trainer,train_loader,Sum_writer,val_loader,softmax,w,h,cfg_val_loader,save_fdr,exp_name):
     print('Starting Training...')
     
-    best_val_loss = float('inf')
-    best_map_metric = 0
+
     Iter = 0
     
     first_epoch = trainer.get_epoch()
@@ -1197,7 +976,7 @@ def Validation(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
         val_loss = 0
         t_val = tqdm(val_loader,position=0, leave=True)
         for i, data_i in enumerate(t_val):
-            s1 = time.time()
+           
             original = data_i['original'].to(device)
             semantic = data_i['semantic'].to(device)
             synthesis = data_i['synthesis'].to(device)
@@ -1214,13 +993,12 @@ def Validation(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
             t_val.refresh() # to show immediately the update
             
             outputs = softmax(outputs)
-            (softmax_pred, predictions) = torch.max(outputs, dim=1)
-            avg_val_loss = val_loss / len(val_loader)
-            #if epoch >10:
-            if True:      
-                flat_pred[i * w * h:i * w * h + w * h] = torch.flatten(outputs[:, 1, :, :]).detach().cpu().numpy()
-                flat_labels[i * w * h:i * w * h + w * h] = torch.flatten(label).detach().cpu().numpy()
-                #print('hi')
+           
+            
+         
+            flat_pred[i * w * h:i * w * h + w * h] = torch.flatten(outputs[:, 1, :, :]).detach().cpu().numpy()
+            flat_labels[i * w * h:i * w * h + w * h] = torch.flatten(label).detach().cpu().numpy()
+            
             
 
        
@@ -1257,7 +1035,7 @@ def Test(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
         val_loss = 0
         t_val = tqdm(val_loader,position=0, leave=True)
         for i, data_i in enumerate(t_val):
-            s1 = time.time()
+  
             original = data_i['original'].to(device)
             semantic = data_i['semantic'].to(device)
             synthesis = data_i['synthesis'].to(device)
@@ -1268,60 +1046,47 @@ def Test(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
 
             val_loss += loss
             
-            
-            
-            
             t_val.set_description('Validation: Epoch %i  Loss: %.2f'% (epoch,loss))
             t_val.refresh() # to show immediately the update
+            flat_pred[i * w * h:i * w * h + w * h] = torch.flatten(outputs[:, 1, :, :]).detach().cpu().numpy() #
+            flat_labels[i * w * h:i * w * h + w * h] = torch.flatten(label).detach().cpu().numpy()
+               
+
             
-            outputs = softmax(outputs)
-            (softmax_pred, predictions) = torch.max(outputs, dim=1)
-            avg_val_loss = val_loss / len(val_loader)
-            #semanti = semantic[:,0,:,:]
-            outputs = outputs[:,1,:,:]
+            print(semantic.shape)
             
-            #output = (outputs[0,:,:] + 1) * 128
-            #output = torch.clamp(output, 0, 255)
+            # output = output.type(torch.uint8).cpu().numpy()
+            # output = outputs[0,:,:].type(torch.uint8).cpu().numpy()
+            # output = np.asarray(output)
+            # plt.imshow(output) 
+            
+            
+            
+            #outputs = (outputs[0,1,:,:] + 1) * 128
+            #outputs = torch.clamp(outputs, 0, 255)       
+            
+
+            
+            
+            # outputs = softmax(outputs)            
             # labels = label[0,0,:,:].type(torch.uint8).cpu().numpy()
             # labels = np.asarray(labels)
             # plt.imshow(labels)
             
            
             
-            output = (outputs[0,:,:] + 1) * 128
-            a = outputs[0,:,:]
+            output = (outputs[0,1,:,:] + 1) * 128
             output = torch.clamp(output, 0, 255)
             output = output.type(torch.uint8).cpu().numpy()
-            #output = outputs[0,:,:].type(torch.uint8).cpu().numpy()
             output = np.asarray(output)
             plt.imshow(output) 
-           
-            #output[output<0.6] = 0
-            #output[output>=0.6] = 1
-            #output[semanti == 0] = 0
-            #if epoch >10
-            if True:     
-                #flat_pred[i * w * h:i * w * h + w * h] = torch.flatten(output).detach().cpu().numpy()
-                flat_pred[i * w * h:i * w * h + w * h] = torch.flatten(outputs).detach().cpu().numpy()
-                flat_labels[i * w * h:i * w * h + w * h] = torch.flatten(label).detach().cpu().numpy()
-                #print('hi')
             
-
-       
-        if True: 
-            results = get_metrics(flat_labels, flat_pred)
-            #Test_writer.add_graph(trainer.get_model, inputs)
-            #Sum_writer.add_scalar('Validation/AUC_ROC_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), results['auroc'], epoch)
-            #Sum_writer.add_scalar('Validation/mAP_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), results['AP'], epoch)
-            #Sum_writer.add_scalar('Validation/FPR@95TPR_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), results['FPR@95%TPR'], epoch)
-            avg_val_loss = val_loss / len(val_loader)  
-            results['avg_val_loss'] = avg_val_loss
-            #Sum_writer.add_scalar('Validation/Val_loss_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), avg_val_loss, epoch)
-       
-        else:
-            avg_val_loss = val_loss / len(val_loader)  
-            results['avg_val_loss'] = avg_val_loss
-            Sum_writer.add_scalar('Validation/Val_loss_%s' % os.path.basename(cfg_val_loader['dataset_args']['dataroot']), avg_val_loss, epoch)
+   
+        results = get_metrics(flat_labels, flat_pred)
+        #model = trainer.get_model
+        Test_writer.add_graph(model, inputs)
+        avg_val_loss = val_loss / len(val_loader)  
+        results['avg_val_loss'] = avg_val_loss
 
         return results  
  
@@ -1348,7 +1113,8 @@ def Test(val_loader,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader):
 epoch = 1
 results = Test(test_loader1,trainer,epoch,softmax,w,h,Sum_writer,cfg_val_loader)
 
-print('Test: Train/Training Loss: %f' % (results['avg_val_loss'])) 
+print('\n')
+print('Test: Test Loss: %f' % (results['avg_val_loss'])) 
 print('Test: AU_ROC: %f' % results['auroc'])
 print('Test: mAP: %f' % results['AP'])
 print('Test: FPR@95TPR: %f' % results['FPR@95%TPR'])
